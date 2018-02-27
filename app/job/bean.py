@@ -1,3 +1,5 @@
+from pyquery import PyQuery
+
 from . import common
 from .daka import Daka
 
@@ -11,22 +13,23 @@ class Bean(Daka):
     test_url = 'https://vip.jd.com/member/myJingBean/index.html'
     login_url = test_url
 
+    def __init__(self, session):
+        super().__init__(session)
+        self.page_data = ''
+
     def is_signed(self):
-        response = self.session.get(self.info_url).json()
-        signed = False
+        page_data = self._get_page_data()
+        signed = '已签到' in PyQuery(page_data)('.sign-in').text()
 
-        if response['success']:
-            user_info = response['result']['userInfo']
+        detail = self.session.get(self.info_url).json()
+
+        if detail['success']:
+            user_info = detail['result']['userInfo']
             beans_count = user_info['userJingBeanNum']
-
-            ext_user_info = response['result']['extUserInfo']
-            signed = (ext_user_info['isSignIn'] == 'true')
-
             self.logger.info('今日已签到: {}; 现在有 {} 个京豆.'.format(signed, beans_count))
 
         else:
-            message = response['resultTips']
-            self.logger.error('获取京豆信息失败: {}'.format(message))
+            self.logger.info('今日已签到: {}'.format(signed))
 
         return signed
 
@@ -38,8 +41,9 @@ class Bean(Daka):
 
         if response['success']:
             # 签到成功, 获得若干个京豆
-            beans_get = response['result']['jdnum']
-            self.logger.info('签到成功, 获得 {} 个京豆.'.format(beans_get))
+            beans_get = response['result'].get('jdnum')
+            message = '签到成功, 获得 {} 个京豆.'.format(beans_get) if beans_get else '签到成功.'
+            self.logger.info(message)
             return True
 
         else:
@@ -49,11 +53,17 @@ class Bean(Daka):
             return False
 
     def _get_token(self):
-        html = self.session.get(self.index_url).text
-        pattern = r'token: "(\d+)"'
+        html = self._get_page_data()
+        pattern = r'token:\s*"(\d+)"'
         token = common.find_value(pattern, html)
 
         if not token:
             raise Exception('token 未找到.')
 
         return token
+
+    def _get_page_data(self):
+        if not self.page_data:
+            self.page_data = self.session.get(self.index_url).text
+
+        return self.page_data

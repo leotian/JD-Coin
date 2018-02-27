@@ -4,7 +4,8 @@ import urllib.request
 from http.cookies import SimpleCookie
 from pathlib import Path
 
-from PyQt5.QtCore import QUrl
+from PyQt5 import QtCore
+from PyQt5.QtCore import QUrl, QTimer
 from PyQt5.QtGui import QIcon
 from PyQt5.QtNetwork import QNetworkProxy
 from PyQt5.QtWebEngineWidgets import QWebEngineView
@@ -12,6 +13,10 @@ from PyQt5.QtWidgets import QApplication
 from requests.cookies import RequestsCookieJar
 
 from config import config
+
+# 过滤掉一些不需要的 Qt WebEngine 日志输出
+# https://stackoverflow.com/questions/35894171/redirect-qdebug-output-to-file-with-pyqt5
+QtCore.qInstallMessageHandler(lambda *args: None)
 
 APP = None
 
@@ -30,6 +35,9 @@ class MobileBrowser(QWebEngineView):
         # pin=***; expires=Fri, 14-Apr-2017 17:29:28 GMT; domain=.360buy.com; path=/
         # 等一系列同名 cookie.
         self.cookies = RequestsCookieJar()
+
+        # 当到达 target 时自动关闭浏览器窗口
+        self.target = None
 
         self.show()
 
@@ -75,16 +83,20 @@ class MobileBrowser(QWebEngineView):
         for cookie in simple_cookie.values():
             self.cookies.set(cookie.key, cookie)
 
+    def load(self, url: QUrl):
+        self.target = url
+        super().load(url)
+
     def load_finished(self, success):
         """
         自动登录动作
         """
         if success:
-            self.auto_login(self.url().host())
+            self.apply_actions(self.url().host())
 
-    def auto_login(self, host):
+    def apply_actions(self, host):
         """
-        根据地址完成自动填充/登录动作
+        根据地址完成自动填充/登录/关闭窗口动作
         """
         code = None
 
@@ -115,6 +127,13 @@ class MobileBrowser(QWebEngineView):
             code = code.format_map(config.jd)
             self.page().runJavaScript(code)
 
+        if host == self.target.host():
+            self.setWindowTitle('👌 登录成功，窗口即将关闭...')
+
+            timer = QTimer(self)
+            timer.timeout.connect(self.close)
+            timer.start(1000)
+
 
 def get_cookies(url):
     starting_up = QApplication.startingUp()
@@ -141,7 +160,7 @@ def get_cookies(url):
 
 def main():
     test_url = 'https://m.jd.com'
-    get_cookies(test_url)
+    cookies = get_cookies(test_url)
 
 
 if __name__ == '__main__':
