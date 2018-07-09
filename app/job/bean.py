@@ -51,4 +51,3 @@ class Bean(Daka):
             self.page_data = self.session.get(self.index_url).text
 
         return self.page_data
-        
